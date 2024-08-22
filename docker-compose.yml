@@ -1,0 +1,250 @@
+version: '3'
+
+services:
+  client:
+    restart: unless-stopped
+    build:
+      context: ./
+      dockerfile: Dockerfile-development
+    command: ['node_modules/.bin/coko-client-dev']
+    ports:
+      - ${CLIENT_PORT:-4000}:${CLIENT_PORT:-4000}
+    environment:
+      - NODE_ENV=development
+      - CLIENT_PORT=${CLIENT_PORT:-4000}
+      - CLIENT_FAST_REFRESH=1
+      - CLIENT_PAGE_TITLE=${CLIENT_PAGE_TITLE:-BKNANDO}
+      - CLIENT_LANGUAGE=${CLIENT_LANGUAGE:-"en-US"}
+      - CLIENT_FEATURE_UPLOAD_DOCX_FILES=true
+      - CLIENT_FEATURE_BOOK_STRUCTURE=false
+      - SERVER_URL=http://localhost:3000
+      - WEBSOCKET_SERVER_URL=ws://localhost:3333
+      - CLIENT_WS_MIN_TIMEOUT=3000
+      - CLIENT_WS_TIMEOUT=30000
+      - CLIENT_FAVICON_PATH=${CLIENT_FAVICON_PATH:-../static/booknando.ico}
+    volumes:
+      - ./app:/home/node/ketida/app
+    tty: true
+
+  server:
+    image: cokoapps/ketty-server:latest
+    restart: unless-stopped
+    depends_on:
+      - db
+      - epubchecker
+      - pagedjs
+      - xsweet
+    entrypoint:
+      [
+        'sh',
+        'scripts/wait-for-it',
+        'db:5432',
+        '-t',
+        '60',
+        '--',
+        'sh',
+        'scripts/wait-for-it',
+        'http://epubchecker:3001/healthcheck',
+        '-t',
+        '60',
+        '--',
+        'sh',
+        'scripts/wait-for-it',
+        'http://pagedjs:3003/healthcheck',
+        '-t',
+        '60',
+        '--',
+        'sh',
+        'scripts/wait-for-it',
+        'http://xsweet:3004/healthcheck',
+        '-t',
+        '60',
+        '--',
+        'sh',
+        'scripts/setupDevServerKetida2.sh',
+      ]
+    command: ['node', 'startServer.js']
+    ports:
+      - ${SERVER_PORT:-3000}:${SERVER_PORT:-3000}
+      - ${WS_SERVER_PORT:-3333}:${WS_SERVER_PORT:-3333}
+    environment:
+      - NODE_ENV=development
+      - KETIDA_FLAVOUR=${KETIDA_FLAVOUR:-POD}
+      - PUBSWEET_SECRET=${PUBSWEET_SECRET:-dev_secret}
+      - SERVER_URL=${SERVER_URL:-http://server:3000}
+      - WEBSOCKET_SERVER_URL=${WEBSOCKET_SERVER_URL:-ws://server:${WS_SERVER_PORT:-3333}}
+      - CLIENT_URL=${CLIENT_URL:-http://localhost:4000}
+      - SERVER_SERVE_CLIENT=false
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-ketida_dev}
+      - POSTGRES_USER=${POSTGRES_USER:-dev_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-dev_user_password}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-password}
+      - ADMIN_GIVEN_NAME=${ADMIN_GIVEN_NAME:-Admin}
+      - ADMIN_SURNAME=${ADMIN_SURNAME:-Adminius}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
+      - SERVER_PORT=${SERVER_PORT:-3000}
+      - WS_SERVER_PORT=${WS_SERVER_PORT:-3333}
+      - WS_HEARTBEAT_INTERVAL=${WS_HEARTBEAT_INTERVAL:-10000}
+      - FAIL_SAFE_UNLOCKING_INTERVAL=${FAIL_SAFE_UNLOCKING_INTERVAL:-12000}
+      - MAILER_USER=booknandoketty@gmail.com
+      - MAILER_PASSWORD=rzzyophoidifuwqx
+      - MAILER_SENDER=booknandoketty@gmail.com
+      - MAILER_HOSTNAME=smtp.gmail.com
+      - PASSWORD_RESET_PATH_TO_PAGE=/password-reset
+      - S3_PROTOCOL=${S3_PROTOCOL:-http}
+      - S3_HOST=18.230.227.6
+      - S3_PORT=${S3_PORT:-9000}
+      - S3_ACCESS_KEY_ID_USER=${S3_ACCESS_KEY_ID_USER:-ketida}
+      - S3_SECRET_ACCESS_KEY_USER=${S3_SECRET_ACCESS_KEY_USER:-superSecretUserPassword}
+      - S3_BUCKET=${S3_BUCKET:-uploads}
+      # FOR THE CASE OF GCP
+      # - S3_SEPARATE_DELETE_OPERATIONS=true
+      # - S3_FORCE_PATH_STYLE=false
+      - SERVICE_EPUB_CHECKER_CLIENT_ID=59a3392b-0c4f-4318-bbe2-f86eff6d3de4
+      - SERVICE_EPUB_CHECKER_SECRET=asldkjLKJLaslkdf897kjhKUJH
+      - SERVICE_EPUB_CHECKER_URL=${SERVICE_EPUB_CHECKER_URL:-http://epubchecker:3001}
+      - SERVICE_PAGEDJS_CLIENT_ID=59a3392b-0c4f-4318-bbe2-f86eff6d3de4
+      - SERVICE_PAGEDJS_SECRET=asldkjLKJLaslkdf897kjhKUJH
+      - SERVICE_PAGEDJS_URL=${SERVICE_PAGEDJS_URL:-http://pagedjs:3003}
+      - SERVICE_XSWEET_CLIENT_ID=59a3392b-0c4f-4318-bbe2-f86eff6d3de4
+      - SERVICE_XSWEET_SECRET=asldkjLKJLaslkdf897kjhKUJH
+      - SERVICE_XSWEET_URL=${SERVICE_XSWEET_URL:-http://xsweet:3004}
+      - FEATURE_UPLOAD_DOCX_FILES=true
+      - FEATURE_BOOK_STRUCTURE=false
+      - FEATURE_POD=true
+      - AI_ENABLED=true
+      - CHAT_GPT_KEY=${CHAT_GPT_KEY}
+      - TEMP_DIRECTORY_CRON_JOB_SCHEDULE=${TEMP_DIRECTORY_CRON_JOB_TIMING:-0 * * * *}
+      - TEMP_DIRECTORY_CRON_JOB_OFFSET=${TEMP_DIRECTORY_CRON_JOB_OFFSET:-1800000}
+      - TEMP_DIRECTORY_CLEAN_UP=${TEMP_DIRECTORY_CLEAN_UP:-true}
+    volumes:
+      - ./config/development.js:/home/node/server/config/development.js
+      # - ./config/local.js:/home/node/server/config/local.js
+
+  epubchecker:
+    depends_on:
+      - db-epubchecker
+    image: cokoapps/epubchecker:latest
+    ports:
+      - ${SERVICE_EPUB_CHECKER_PORT:-3001}:${SERVICE_EPUB_CHECKER_PORT:-3001}
+    environment:
+      - PUBSWEET_SECRET=epubchecker_dev_secret
+      - POSTGRES_USER=epubchecker_user_dev
+      - POSTGRES_PASSWORD=epubchecker_user_password
+      - POSTGRES_HOST=db-epubchecker
+      - POSTGRES_DB=epubchecker_dev
+      - POSTGRES_PORT=5432
+      - SERVER_PORT=${SERVICE_EPUB_CHECKER_PORT:-3001}
+      - CLIENT_ID=59a3392b-0c4f-4318-bbe2-f86eff6d3de4
+      - CLIENT_SECRET=asldkjLKJLaslkdf897kjhKUJH
+    entrypoint:
+      [
+        'sh',
+        'scripts/wait-for-it',
+        'db-epubchecker:5432',
+        '--',
+        'sh',
+        'scripts/setupProdServer.sh',
+      ]
+    command: ['node', 'server/startServer.js']
+
+  pagedjs:
+    depends_on:
+      - db-pagedjs
+    image: cokoapps/pagedjs:latest
+    ports:
+      - ${SERVICE_PAGEDJS_PORT:-3003}:${SERVICE_PAGEDJS_PORT:-3003}
+    environment:
+      - PUBSWEET_SECRET=pagedjs_dev_secret
+      - POSTGRES_USER=pagedjs_user_dev
+      - POSTGRES_PASSWORD=pagedjs_user_password
+      - POSTGRES_HOST=db-pagedjs
+      - POSTGRES_DB=pagedjs_dev
+      - POSTGRES_PORT=5432
+      - SERVER_PORT=${SERVICE_PAGEDJS_PORT:-3003}
+      - PUBLIC_URL=${PAGEDJS_PUBLIC_URL:-http://localhost:3003}
+      - CLIENT_ID=59a3392b-0c4f-4318-bbe2-f86eff6d3de4
+      - CLIENT_SECRET=asldkjLKJLaslkdf897kjhKUJH
+    security_opt:
+      - seccomp:unconfined
+    entrypoint:
+      [
+        'dumb-init',
+        '--',
+        'sh',
+        'scripts/wait-for-it',
+        'db-pagedjs:5432',
+        '--',
+        'sh',
+        'scripts/setupProdServer.sh',
+      ]
+
+  xsweet:
+    depends_on:
+      - db-xsweet
+    image: cokoapps/xsweet:2.3.3
+    ports:
+      - ${SERVICE_XSWEET_PORT:-3004}:${SERVICE_XSWEET_PORT:-3004}
+    environment:
+      - PUBSWEET_SECRET=xsweet_dev_secret
+      - POSTGRES_USER=xsweet_user_dev
+      - POSTGRES_PASSWORD=xsweet_user_password
+      - POSTGRES_HOST=db-xsweet
+      - POSTGRES_DB=xsweet_dev
+      - POSTGRES_PORT=5432
+      - SERVER_PORT=${SERVICE_XSWEET_PORT:-3004}
+      - CLIENT_ID=59a3392b-0c4f-4318-bbe2-f86eff6d3de4
+      - CLIENT_SECRET=asldkjLKJLaslkdf897kjhKUJH
+    entrypoint:
+      [
+        'sh',
+        'scripts/wait-for-it',
+        'db-xsweet:5432',
+        '--',
+        'sh',
+        'scripts/setupProdServer.sh',
+      ]
+    command: ['node', 'server/startServer.js']
+
+  db:
+    build:
+      context: .
+      dockerfile: Dockerfile-pgvector
+    ports:
+      - 5432:5432
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-ketida_dev}
+      - POSTGRES_USER=${POSTGRES_USER:-dev_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-dev_user_password}
+    volumes:
+      - ./scripts/init-pgboss.sql:/docker-entrypoint-initdb.d/init-pgboss.sql
+
+  db-epubchecker:
+    image: postgres:14.4-alpine
+    environment:
+      - POSTGRES_USER=epubchecker_user_dev
+      - POSTGRES_DB=epubchecker_dev
+      - POSTGRES_PASSWORD=epubchecker_user_password
+    volumes:
+      - ./scripts/init-pgboss.sql:/docker-entrypoint-initdb.d/init-pgboss.sql
+
+  db-pagedjs:
+    image: postgres:14.4-alpine
+    environment:
+      - POSTGRES_USER=pagedjs_user_dev
+      - POSTGRES_DB=pagedjs_dev
+      - POSTGRES_PASSWORD=pagedjs_user_password
+    volumes:
+      - ./scripts/init-pgboss.sql:/docker-entrypoint-initdb.d/init-pgboss.sql
+
+  db-xsweet:
+    image: postgres:14.4-alpine
+    environment:
+      - POSTGRES_USER=xsweet_user_dev
+      - POSTGRES_DB=xsweet_dev
+      - POSTGRES_PASSWORD=xsweet_user_password
+    volumes:
+      - ./scripts/init-pgboss.sql:/docker-entrypoint-initdb.d/init-pgboss.sql

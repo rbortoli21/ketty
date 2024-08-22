@@ -1,0 +1,184 @@
+include:
+  - project: 'cokoapps/ci'
+    ref: main
+    file: 'ci-templates.yml'
+
+variables:
+  IMAGE_NAME_DEVELOPMENT: ketty-client-ci-development
+  IMAGE_NAME_PREPRODUCTION_DEVELOP: ketty-client-ci-production-develop
+  IMAGE_NAME_PREPRODUCTION_DEMO: ketty-client-ci-production-demo
+  IMAGE_NAME_PRODUCTION_DEVELOP: ketty-client-deploy-develop
+  IMAGE_NAME_PRODUCTION_DEMO: ketty-client
+  IMAGE_NAME_STORYBOOK: ketty-client-storybook
+  PATH_TO_BUILD: .
+  PATH_INSIDE_CONTAINER: /home/node/ketida
+  COMPOSE_FILE_STORYBOOK: docker-compose.storybook-deploy.yml
+  COMPOSE_FILE_DEPLOY_DEVELOP: docker-compose.develop-deploy.yml
+  COMPOSE_FILE_DEPLOY_DEMO: docker-compose.demo-deploy.yml
+
+stages:
+  - Branch checks
+  - Docs
+  - Build development
+  - Lint & Unit test
+  - Build production
+  - Publish
+  - Deploy
+
+branch source and target rules:
+  stage: Branch checks
+  script:
+    - if [[ "$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME" == "main" ]]; then exit 1; fi # do not allow MRs from main into anything
+    - if [[ "$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME" != "develop" && "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" == "main" ]]; then exit 1; fi # only develop can be merged into main
+    - if [[ "$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME" == "develop" && "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" != "main" ]]; then exit 1; fi # develop can only be merged into main
+
+pages:
+  image: node:lts
+  stage: Docs
+  cache:
+    paths:
+      - node_modules/
+  script:
+    - cd docs
+    - yarn install
+    - yarn build
+  artifacts:
+    expire_in: 30min
+    paths:
+      - docs/build
+  publish: docs/build
+  only:
+    - main
+
+## LINT & UNIT TEST
+
+build development:
+  extends: .build development
+  stage: Build development
+  variables:
+    IMAGE_NAME: $IMAGE_NAME_DEVELOPMENT
+    BUILD_PATH: $PATH_TO_BUILD
+
+lint:
+  extends: .lint
+  stage: Lint & Unit test
+  variables:
+    IMAGE_NAME: $IMAGE_NAME_DEVELOPMENT
+    WORKDIR: $PATH_INSIDE_CONTAINER
+    STYLELINT: 1
+
+unit test:
+  extends: .client unit test
+  stage: Lint & Unit test
+  variables:
+    IMAGE_NAME: $IMAGE_NAME_DEVELOPMENT
+    WORKDIR: $PATH_INSIDE_CONTAINER
+
+## BUILD PRODUCTION IMAGE
+
+build preproduction develop:
+  extends: .build production
+  stage: Build production
+  variables:
+    IMAGE_NAME: $IMAGE_NAME_PREPRODUCTION_DEVELOP
+    BUILD_PATH: $PATH_TO_BUILD
+  only:
+    - develop
+
+build preproduction demo:
+  extends: .build production
+  stage: Build production
+  variables:
+    IMAGE_NAME: $IMAGE_NAME_PREPRODUCTION_DEMO
+    BUILD_PATH: $PATH_TO_BUILD
+  only:
+    - main
+
+## E2E TESTS -- TO DO --
+# NOTE: update 'needs' for publish stage after adding e2e tests.
+
+## PUBLISH PRODUCTION IMAGE
+
+publish production develop:
+  extends: .publish
+  stage: Publish
+  needs:
+    - build preproduction develop
+  variables:
+    PREPRODUCTION_IMAGE_NAME: $IMAGE_NAME_PREPRODUCTION_DEVELOP
+    PRODUCTION_IMAGE_NAME: $IMAGE_NAME_PRODUCTION_DEVELOP
+  only:
+    - develop
+
+publish production demo:
+  extends: .publish
+  stage: Publish
+  needs:
+    - build preproduction demo
+  variables:
+    PREPRODUCTION_IMAGE_NAME: $IMAGE_NAME_PREPRODUCTION_DEMO
+    PRODUCTION_IMAGE_NAME: $IMAGE_NAME_PRODUCTION_DEMO
+  only:
+    - main
+
+build & publish storybook:
+  extends: .build & publish storybook
+  stage: Publish
+  variables:
+    IMAGE_NAME: $IMAGE_NAME_STORYBOOK
+    BUILD_PATH: $PATH_TO_BUILD
+  only:
+    - develop
+
+# DEPLOY
+
+deploy storybook:
+  extends: .deploy base
+  stage: Deploy
+  needs:
+    - build & publish storybook
+  variables:
+    URL: $STORYBOOK_SSH_URL
+    PORT: $STORYBOOK_SSH_PORT
+    USER: $STORYBOOK_SSH_USER
+    PRIVATE_KEY: $STORYBOOK_SSH_PRIVATE_KEY
+    APP_PATH_ON_SERVER: $STORYBOOK_APP_PATH_ON_SERVER
+    COMPOSE_FILE: $COMPOSE_FILE_STORYBOOK
+    SERVICE_NAME: $SERVICE_NAME_STORYBOOK
+  only:
+    - develop
+  environment:
+    name: storybook
+    url: https://$STORYBOOK_SSH_URL
+
+deploy develop:
+  extends: .deploy base
+  stage: Deploy
+  needs:
+    - publish production develop
+  variables:
+    URL: $DEVELOP_SSH_URL
+    PORT: $DEVELOP_SSH_PORT
+    USER: $DEVELOP_SSH_USER
+    PRIVATE_KEY: $DEVELOP_SSH_PRIVATE_KEY
+    APP_PATH_ON_SERVER: $DEVELOP_APP_PATH_ON_SERVER
+    COMPOSE_FILE: $COMPOSE_FILE_DEPLOY_DEVELOP
+    SERVICE_NAME: $SERVICE_NAME_DEPLOY_DEVELOP
+  only:
+    - develop
+
+deploy demo:
+  extends: .deploy base
+  stage: Deploy
+  needs:
+    - publish production demo
+  variables:
+    URL: $DEMO_SSH_URL
+    PORT: $DEMO_SSH_PORT
+    USER: $DEMO_SSH_USER
+    PRIVATE_KEY: $DEMO_SSH_PRIVATE_KEY
+    APP_PATH_ON_SERVER: $DEMO_APP_PATH_ON_SERVER
+    COMPOSE_FILE: $COMPOSE_FILE_DEPLOY_DEMO
+    SERVICE_NAME: $SERVICE_NAME_DEPLOY_DEMO
+  only:
+    - main

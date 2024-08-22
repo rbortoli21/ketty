@@ -1,0 +1,14 @@
+version: '3'
+
+services:
+  client:
+    build:
+      context: ./
+      dockerfile: Dockerfile-production
+    entrypoint: ['sh', './env.sh']
+    command: ['nginx', '-g', 'daemon off;']
+    ports:
+      - ${NGINX_PORT_TO_LOCAL:-4000}:80
+    environment:
+      - SERVER_URL=${SERVER_URL:-http://localhost:3000}
+      - WEBSOCKET_SERVER_URL=${WEBSOCKET_SERVER_URL:-ws://localhost:3333}
