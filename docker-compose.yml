@@ -1,14 +1,6 @@
 version: '3'
 
 services:
-  nginx:
-    image: nginx:latest
-    ports:
-      - "80:80"
-    depends_on:
-      - server
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
   client:
     restart: unless-stopped
     build:
@@ -18,7 +10,7 @@ services:
     ports:
       - ${CLIENT_PORT:-4000}:${CLIENT_PORT:-4000}
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=development
       - CLIENT_PORT=${CLIENT_PORT:-4000}
       - CLIENT_FAST_REFRESH=1
       - CLIENT_PAGE_TITLE=${CLIENT_PAGE_TITLE:-BKNANDO}
@@ -38,9 +30,9 @@ services:
     image: cokoapps/ketty-server:latest
     restart: unless-stopped
     depends_on:
-      - s3
-      - createbucket
       - db
+      - createbucket
+      - s3
       - epubchecker
       - pagedjs
       - xsweet
@@ -48,25 +40,31 @@ services:
       [
         'sh',
         'scripts/wait-for-it',
-        '18.230.58.103:5432',
+        'db:5432',
         '-t',
         '60',
         '--',
         'sh',
         'scripts/wait-for-it',
-        'http://18.230.58.103:3001/healthcheck',
+        'http://s3:9001',
         '-t',
         '60',
         '--',
         'sh',
         'scripts/wait-for-it',
-        'http://18.230.58.103:3003/healthcheck',
+        'http://epubchecker:3001/healthcheck',
         '-t',
         '60',
         '--',
         'sh',
         'scripts/wait-for-it',
-        'http://18.230.58.103:3004/healthcheck',
+        'http://pagedjs:3003/healthcheck',
+        '-t',
+        '60',
+        '--',
+        'sh',
+        'scripts/wait-for-it',
+        'http://xsweet:3004/healthcheck',
         '-t',
         '60',
         '--',
@@ -78,12 +76,12 @@ services:
       - ${SERVER_PORT:-3000}:${SERVER_PORT:-3000}
       - ${WS_SERVER_PORT:-3333}:${WS_SERVER_PORT:-3333}
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=development
       - KETIDA_FLAVOUR=${KETIDA_FLAVOUR:-POD}
       - PUBSWEET_SECRET=${PUBSWEET_SECRET:-dev_secret}
-      - SERVER_URL=${SERVER_URL:-http://server:3000}
-      - WEBSOCKET_SERVER_URL=${WEBSOCKET_SERVER_URL:-ws://server:${WS_SERVER_PORT:-3333}}
-      - CLIENT_URL=${CLIENT_URL:-http://localhost:4000}
+      - SERVER_URL=${SERVER_URL:-http://18.230.58.103:3000}
+      - WEBSOCKET_SERVER_URL=${WEBSOCKET_SERVER_URL:-ws://18.230.58.103:${WS_SERVER_PORT:-3333}}
+      - CLIENT_URL=${CLIENT_URL:-http://18.230.58.103:4000}
       - SERVER_SERVE_CLIENT=false
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
@@ -99,13 +97,13 @@ services:
       - WS_SERVER_PORT=${WS_SERVER_PORT:-3333}
       - WS_HEARTBEAT_INTERVAL=${WS_HEARTBEAT_INTERVAL:-10000}
       - FAIL_SAFE_UNLOCKING_INTERVAL=${FAIL_SAFE_UNLOCKING_INTERVAL:-12000}
-      - MAILER_USER=booknandoketty@gmail.com
-      - MAILER_PASSWORD=rzzyophoidifuwqx
-      - MAILER_SENDER=booknandoketty@gmail.com
-      - MAILER_HOSTNAME=smtp.gmail.com
+      - MAILER_USER=${MAILER_USER}
+      - MAILER_PASSWORD=${MAILER_PASSWORD}
+      - MAILER_SENDER=${MAILER_SENDER:-dev@example.com}
+      - MAILER_HOSTNAME=${MAILER_HOSTNAME}
       - PASSWORD_RESET_PATH_TO_PAGE=/password-reset
       - S3_PROTOCOL=${S3_PROTOCOL:-http}
-      - S3_HOST=18.230.58.103
+      - S3_HOST=${S3_HOST:-s3}
       - S3_PORT=${S3_PORT:-9000}
       - S3_ACCESS_KEY_ID_USER=${S3_ACCESS_KEY_ID_USER:-ketida}
       - S3_SECRET_ACCESS_KEY_USER=${S3_SECRET_ACCESS_KEY_USER:-superSecretUserPassword}
@@ -125,8 +123,8 @@ services:
       - FEATURE_UPLOAD_DOCX_FILES=true
       - FEATURE_BOOK_STRUCTURE=false
       - FEATURE_POD=true
-      - AI_ENABLED=true
-      - CHAT_GPT_KEY=${CHAT_GPT_KEY:-a}
+      - AI_ENABLED=${AI_ENABLED:-true}
+      - CHAT_GPT_KEY=${CHAT_GPT_KEY}
       - TEMP_DIRECTORY_CRON_JOB_SCHEDULE=${TEMP_DIRECTORY_CRON_JOB_TIMING:-0 * * * *}
       - TEMP_DIRECTORY_CRON_JOB_OFFSET=${TEMP_DIRECTORY_CRON_JOB_OFFSET:-1800000}
       - TEMP_DIRECTORY_CLEAN_UP=${TEMP_DIRECTORY_CLEAN_UP:-true}
@@ -258,6 +256,7 @@ services:
       - POSTGRES_PASSWORD=xsweet_user_password
     volumes:
       - ./scripts/init-pgboss.sql:/docker-entrypoint-initdb.d/init-pgboss.sql
+
   s3:
     image: minio/minio:RELEASE.2023-12-07T04-16-00Z
     ports:
