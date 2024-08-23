@@ -10,7 +10,7 @@ services:
     ports:
       - ${CLIENT_PORT:-4000}:${CLIENT_PORT:-4000}
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
       - CLIENT_PORT=${CLIENT_PORT:-4000}
       - CLIENT_FAST_REFRESH=1
       - CLIENT_PAGE_TITLE=${CLIENT_PAGE_TITLE:-BKNANDO}
@@ -30,6 +30,8 @@ services:
     image: cokoapps/ketty-server:latest
     restart: unless-stopped
     depends_on:
+      - s3
+      - createbucket
       - db
       - epubchecker
       - pagedjs
@@ -38,25 +40,25 @@ services:
       [
         'sh',
         'scripts/wait-for-it',
-        'db:5432',
+        '18.230.58.103:5432',
         '-t',
         '60',
         '--',
         'sh',
         'scripts/wait-for-it',
-        'http://epubchecker:3001/healthcheck',
+        'http://18.230.58.103:3001/healthcheck',
         '-t',
         '60',
         '--',
         'sh',
         'scripts/wait-for-it',
-        'http://pagedjs:3003/healthcheck',
+        'http://18.230.58.103:3003/healthcheck',
         '-t',
         '60',
         '--',
         'sh',
         'scripts/wait-for-it',
-        'http://xsweet:3004/healthcheck',
+        'http://18.230.58.103:3004/healthcheck',
         '-t',
         '60',
         '--',
@@ -68,7 +70,7 @@ services:
       - ${SERVER_PORT:-3000}:${SERVER_PORT:-3000}
       - ${WS_SERVER_PORT:-3333}:${WS_SERVER_PORT:-3333}
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
       - KETIDA_FLAVOUR=${KETIDA_FLAVOUR:-POD}
       - PUBSWEET_SECRET=${PUBSWEET_SECRET:-dev_secret}
       - SERVER_URL=${SERVER_URL:-http://server:3000}
@@ -95,7 +97,7 @@ services:
       - MAILER_HOSTNAME=smtp.gmail.com
       - PASSWORD_RESET_PATH_TO_PAGE=/password-reset
       - S3_PROTOCOL=${S3_PROTOCOL:-http}
-      - S3_HOST=18.230.227.6
+      - S3_HOST=18.230.58.103
       - S3_PORT=${S3_PORT:-9000}
       - S3_ACCESS_KEY_ID_USER=${S3_ACCESS_KEY_ID_USER:-ketida}
       - S3_SECRET_ACCESS_KEY_USER=${S3_SECRET_ACCESS_KEY_USER:-superSecretUserPassword}
@@ -105,18 +107,18 @@ services:
       # - S3_FORCE_PATH_STYLE=false
       - SERVICE_EPUB_CHECKER_CLIENT_ID=59a3392b-0c4f-4318-bbe2-f86eff6d3de4
       - SERVICE_EPUB_CHECKER_SECRET=asldkjLKJLaslkdf897kjhKUJH
-      - SERVICE_EPUB_CHECKER_URL=${SERVICE_EPUB_CHECKER_URL:-http://epubchecker:3001}
+      - SERVICE_EPUB_CHECKER_URL=${SERVICE_EPUB_CHECKER_URL:-http://18.230.58.103:3001}
       - SERVICE_PAGEDJS_CLIENT_ID=59a3392b-0c4f-4318-bbe2-f86eff6d3de4
       - SERVICE_PAGEDJS_SECRET=asldkjLKJLaslkdf897kjhKUJH
-      - SERVICE_PAGEDJS_URL=${SERVICE_PAGEDJS_URL:-http://pagedjs:3003}
+      - SERVICE_PAGEDJS_URL=${SERVICE_PAGEDJS_URL:-http://18.230.58.103:3003}
       - SERVICE_XSWEET_CLIENT_ID=59a3392b-0c4f-4318-bbe2-f86eff6d3de4
       - SERVICE_XSWEET_SECRET=asldkjLKJLaslkdf897kjhKUJH
-      - SERVICE_XSWEET_URL=${SERVICE_XSWEET_URL:-http://xsweet:3004}
+      - SERVICE_XSWEET_URL=${SERVICE_XSWEET_URL:-http://18.230.58.103:3004}
       - FEATURE_UPLOAD_DOCX_FILES=true
       - FEATURE_BOOK_STRUCTURE=false
       - FEATURE_POD=true
       - AI_ENABLED=true
-      - CHAT_GPT_KEY=${CHAT_GPT_KEY}
+      - CHAT_GPT_KEY=${CHAT_GPT_KEY:-a}
       - TEMP_DIRECTORY_CRON_JOB_SCHEDULE=${TEMP_DIRECTORY_CRON_JOB_TIMING:-0 * * * *}
       - TEMP_DIRECTORY_CRON_JOB_OFFSET=${TEMP_DIRECTORY_CRON_JOB_OFFSET:-1800000}
       - TEMP_DIRECTORY_CLEAN_UP=${TEMP_DIRECTORY_CLEAN_UP:-true}
@@ -165,7 +167,7 @@ services:
       - POSTGRES_DB=pagedjs_dev
       - POSTGRES_PORT=5432
       - SERVER_PORT=${SERVICE_PAGEDJS_PORT:-3003}
-      - PUBLIC_URL=${PAGEDJS_PUBLIC_URL:-http://localhost:3003}
+      - PUBLIC_URL=${PAGEDJS_PUBLIC_URL:-http://18.230.58.103:3003}
       - CLIENT_ID=59a3392b-0c4f-4318-bbe2-f86eff6d3de4
       - CLIENT_SECRET=asldkjLKJLaslkdf897kjhKUJH
     security_opt:
@@ -248,3 +250,23 @@ services:
       - POSTGRES_PASSWORD=xsweet_user_password
     volumes:
       - ./scripts/init-pgboss.sql:/docker-entrypoint-initdb.d/init-pgboss.sql
+  s3:
+    image: minio/minio:RELEASE.2023-12-07T04-16-00Z
+    ports:
+      - ${S3_PORT:-9000}:9000
+      - ${MINIO_CONSOLE_PORT:-9001}:9001
+    volumes:
+      - minio_storage:/data
+    environment:
+      - MINIO_ROOT_USER=${S3_ACCESS_KEY_ID_ADMIN:-admin}
+      - MINIO_ROOT_PASSWORD=${S3_SECRET_ACCESS_KEY_ADMIN:-superSecretAdminPassword}
+    command: server --console-address ":9001" /data
+
+  createbucket:
+    image: minio/mc:RELEASE.2023-12-02T11-24-10Z
+    depends_on:
+      - s3
+    entrypoint: >
+      /bin/sh -c " /usr/bin/mc config host add ketida ${S3_PROTOCOL:-http}://${S3_HOST:-s3}:${S3_PORT:-9000} ${S3_ACCESS_KEY_ID_ADMIN:-admin} ${S3_SECRET_ACCESS_KEY_ADMIN:-superSecretAdminPassword}; /usr/bin/mc admin user add ketida/ ${S3_ACCESS_KEY_ID_USER:-ketida} ${S3_SECRET_ACCESS_KEY_USER:-superSecretUserPassword}; /usr/bin/mc admin user enable ketida/ ${S3_ACCESS_KEY_ID_USER:-ketida}; /usr/bin/mc mb ketida/${S3_BUCKET:-uploads}; /usr/bin/mc admin policy attach ketida readwrite --user ${S3_ACCESS_KEY_ID_USER:-ketida}; exit 0; "
+volumes:
+  minio_storage:
