@@ -97,10 +97,10 @@ services:
       - WS_SERVER_PORT=${WS_SERVER_PORT:-3333}
       - WS_HEARTBEAT_INTERVAL=${WS_HEARTBEAT_INTERVAL:-10000}
       - FAIL_SAFE_UNLOCKING_INTERVAL=${FAIL_SAFE_UNLOCKING_INTERVAL:-12000}
-      - MAILER_USER=${MAILER_USER}
-      - MAILER_PASSWORD=${MAILER_PASSWORD}
-      - MAILER_SENDER=${MAILER_SENDER:-dev@example.com}
-      - MAILER_HOSTNAME=${MAILER_HOSTNAME}
+      - MAILER_USER=booknandoketty@gmail.com
+      - MAILER_PASSWORD=rzzyophoidifuwqx
+      - MAILER_SENDER=booknandoketty@gmail.com
+      - MAILER_HOSTNAME=smtp.gmail.com
       - PASSWORD_RESET_PATH_TO_PAGE=/password-reset
       - S3_PROTOCOL=${S3_PROTOCOL:-http}
       - S3_HOST=${S3_HOST:-s3}
